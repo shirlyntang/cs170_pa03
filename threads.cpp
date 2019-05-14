@@ -85,14 +85,16 @@ int sem_init(sem_t *sem, int pshared, unsigned int value)
     return ENOSYS;
   }
   semaphore* s = new semaphore();
-  if (value >= SEM_VALUE_MAX)
+  if (value > SEM_VALUE_MAX)
   {
     unlock();
+    cerr << "here" << endl;
     return EINVAL;
   }
   s->val = value;
   s->status = READY;
   s->list.resize(0, 0);
+  cerr << ":PPP" << endl;
   sem->__align = (long int)s;
   unlock();
   return 0;
@@ -123,9 +125,6 @@ int sem_wait(sem_t *sem)
     threads[current_thread].status = BLOCKED;
     ((semaphore*)(sem->__align))->status = BLOCKED;
     switch_threads(SIGALRM);
-    /*unlock();
-    kill(getpid(), SIGALRM);
-    lock();*/
   }
   unlock();
   return 0;
@@ -133,15 +132,15 @@ int sem_wait(sem_t *sem)
 int sem_post(sem_t *sem)
 {
   lock();
-  if (((semaphore*)(sem->__align))->list.size() > 0)
-  {
-    ((semaphore*)(sem->__align))->list[0]->status = READY;
-    ((semaphore*)(sem->__align))->list.erase(((semaphore*)(sem->__align))->list.begin());
-  }
-  else if (((semaphore*)(sem->__align))->val >= SEM_VALUE_MAX)
+  if (((semaphore*)(sem->__align))->val >= SEM_VALUE_MAX)
   {
     unlock();
     return EOVERFLOW;
+  }
+  else if (((semaphore*)(sem->__align))->list.size() > 0)
+  {
+    ((semaphore*)(sem->__align))->list[0]->status = READY;
+    ((semaphore*)(sem->__align))->list.erase(((semaphore*)(sem->__align))->list.begin());
   }
   else
   {
@@ -169,7 +168,7 @@ static long int i64_ptr_mangle(long int p)
 
 void scheduler()
 {
-  cerr << "scheduler current: " << current_thread << endl;
+  //cerr << "scheduler current: " << current_thread << endl;
   //threads[current_thread].status = READY;
 	if(current_thread >= threads.size()-1)
   	{
@@ -181,14 +180,11 @@ void scheduler()
   	}
     while(threads[current_thread].status == BLOCKED || threads[current_thread].status == EXITED)
     {
-      cerr << "while loop current: " << current_thread << endl;
       if (current_thread < threads.size()-1)
         current_thread++;
       else
         current_thread = 0;
     }
-    cerr << ":(" << endl;
-    cerr << "current " << current_thread << endl;
     threads[current_thread].status = RUNNING;
   	longjmp(threads[current_thread].buf, 1); //TODO: change status of thread???
 }
@@ -202,7 +198,7 @@ void* wrapper_function()
 
 void switch_threads(int sig)
 {
-  cerr << "ALARM----------------------------------------" << endl;
+  //cerr << "ALARM----------------------------------------" << endl;
 	int i;
 	i = setjmp(threads[current_thread].buf);
 
@@ -270,6 +266,8 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
 
 int pthread_join(pthread_t thread, void **value_ptr)
 {
+  if (threads.size() == 0)
+    return EDEADLK;
   cerr << "join called" << endl;
   int target = -1;
 
