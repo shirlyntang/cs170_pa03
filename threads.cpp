@@ -83,9 +83,10 @@ static long int i64_ptr_mangle(long int p)
     return ret;
 }
 
-void scheduler(){
-
-  threads[current_thread].status = READY;
+void scheduler()
+{
+  cerr << "scheduler current: " << current_thread << endl;
+  //threads[current_thread].status = READY;
 	if(current_thread >= threads.size()-1)
   	{
   		current_thread = 0;
@@ -94,13 +95,15 @@ void scheduler(){
   	{
   		current_thread++;
   	}
-    while(threads[current_thread].status == BLOCKED)
+    while(threads[current_thread].status == BLOCKED || threads[current_thread].status == EXITED)
     {
+      cerr << "while loop current: " << current_thread << endl;
       if (current_thread < threads.size()-1)
         current_thread++;
       else
         current_thread = 0;
     }
+    cerr << ":(" << endl;
     threads[current_thread].status = RUNNING;
   	longjmp(threads[current_thread].buf, 1); //TODO: change status of thread???
 }
@@ -114,6 +117,7 @@ void* wrapper_function()
 
 void switch_threads(int sig)
 {
+  cerr << "ALARM----------------------------------------" << endl;
 	int i;
 	i = setjmp(threads[current_thread].buf);
 
@@ -179,6 +183,7 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
 
 int pthread_join(pthread_t thread, void **value_ptr)
 {
+  cerr << "join called" << endl;
   int target = -1;
 
   //ERROR CHECKING
@@ -186,16 +191,7 @@ int pthread_join(pthread_t thread, void **value_ptr)
   {
     return EDEADLK;
   }
-  /*for (int i = 0; i < exited_threads.size(); i++)
-  {
-    if (thread == exited_threads[i].tid)
-      exited_target = i;
-  }
-  if (exited_target != -1)
-  {
-    //get return value from exited target thread
-  }*/
-
+  lock();
   for (int i = 0; i < threads.size(); i++)
   {
     if (thread == threads[i].tid)
@@ -204,35 +200,40 @@ int pthread_join(pthread_t thread, void **value_ptr)
       break;
     }
   }
-
   if (target == -1)
   {
     return ESRCH;
   }
+  tcb* target_thread = &threads[target];
+  unlock();
 
-  if (threads[target].status == EXITED)
+  if (target_thread->status == EXITED)
   {
-    value_ptr = &(threads[target].return_value);
+    value_ptr = &(target_thread->return_value);
     return ESRCH;
   }
 
-  if (threads[target].waiting_thread != NULL)
+  lock();
+  cerr << "target: " << target << endl;
+  if (target_thread->waiting_thread != NULL)
     return EINVAL;
-
+  threads[current_thread].status = BLOCKED;
+  target_thread->waiting_thread = &threads[current_thread];
+  if (setjmp(threads[current_thread].buf)!= 0)
+  {
+  		*value_ptr = target_thread->return_value;
+  }
   else
   {
-    threads[current_thread].status = BLOCKED;
-    threads[target].waiting_thread = &threads[current_thread];
-    if (setjmp(threads[current_thread].buf)!= 0)
-    		return 0;
+    unlock();
     scheduler();
   }
+  unlock();
   return 0;
 }
 
 void pthread_exit(void *value_ptr)
 {
-
 	if (threads.size()-1 < 0)
   {
 		exit(1);
@@ -256,13 +257,22 @@ void pthread_exit(void *value_ptr)
     }
     threads[current_thread].return_value = value_ptr;
     threads[current_thread].status = EXITED;
-    threads[current_thread].waiting_thread->status = READY;
+    //cerr << "before changing waiting thread status" << endl;
+    if (threads[current_thread].waiting_thread != NULL)
+      threads[current_thread].waiting_thread->status = READY;
+    //cerr << "after waiting thread status = ready" << endl;
 		//threads.erase(threads.begin() + current_thread);
 	}
   current_thread++;
+
+  cerr << "exit current: " << current_thread << endl << endl;
+
   if (current_thread == threads.size() && threads.size() > 0)
+  {
+    cerr << "EXIT RESET CURRENT TO 0" << endl;
     current_thread = 0;
-  while(threads[current_thread].status == BLOCKED)
+  }
+  while(threads[current_thread].status == BLOCKED || threads[current_thread].status == EXITED)
   {
     if (current_thread < threads.size()-1)
       current_thread++;
