@@ -13,6 +13,8 @@ using namespace std;
 #define BLOCKED 2
 #define EXITED 3
 
+#define SEM_VALUE_MAX 65536
+
 struct tcb
 {
     void *SP;
@@ -23,6 +25,25 @@ struct tcb
     void* args;
     void* return_value;
     tcb* waiting_thread = NULL;
+};
+/*
+struct tcb_list_node
+{
+  tcb data;
+  tcb* next;
+};
+
+struct tcb_list
+{
+
+};*/
+
+struct semaphore
+{
+  int val;
+  int status;
+  //tcb_list list;
+  vector<tcb*> list;
 };
 
 static vector<tcb> threads;
@@ -53,18 +74,78 @@ sem_t sem;
 
 int sem_init(sem_t *sem, int pshared, unsigned int value)
 {
+  lock();
+  if (pshared != 0)
+  {
+    unlock();
+    return ENOSYS;
+  }
+  semaphore* s = new semaphore();
+  if (value >= SEM_VALUE_MAX)
+  {
+    unlock();
+    return EINVAL;
+  }
+  s->val = value;
+  s->status = READY;
+  s->list.resize(0, 0);
+  sem->__align = (long int)s;
+  unlock();
   return 0;
 }
 int sem_destroy(sem_t *sem)
 {
+  lock();
+  if (sem->__align!=0 && ((semaphore*)(sem->__align))->status != BLOCKED)
+  {
+    delete((semaphore*)(sem->__align));
+    sem->__align = 0;
+  }
+  unlock();
   return 0;
 }
 int sem_wait(sem_t *sem)
 {
+  lock();
+  if (((semaphore*)(sem->__align))->val > 0)
+  {
+    (((semaphore*)(sem->__align))->val)--;
+  }
+  else
+  {
+    cerr << "current thread: " << current_thread << endl;
+    cerr << "threads.size(): " << threads.size() << endl;
+    ((semaphore*)(sem->__align))->list.push_back(&threads[current_thread]);
+    threads[current_thread].status = BLOCKED;
+    ((semaphore*)(sem->__align))->status = BLOCKED;
+    //while(((semaphore*)(sem->__align))->status == BLOCKED);
+    unlock();
+    kill(getpid(), SIGALRM);
+    lock();
+  }
+  unlock();
   return 0;
 }
 int sem_post(sem_t *sem)
 {
+  lock();
+  if (((semaphore*)(sem->__align))->list.size() > 0)
+  {
+    ((semaphore*)(sem->__align))->list[0]->status = READY;
+    //delete(((semaphore*)(sem->__align))->list[0]);
+    //((semaphore*)(sem->__align))->list.erase(((semaphore*)(sem->__align))->list.begin());
+  }
+  else if (((semaphore*)(sem->__align))->val >= SEM_VALUE_MAX)
+  {
+    unlock();
+    return EOVERFLOW;
+  }
+  else
+  {
+    ((semaphore*)(sem->__align))->val++;
+    ((semaphore*)(sem->__align))->status = READY;
+  }
+  unlock();
   return 0;
 }
 
@@ -153,7 +234,7 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
 
 			ualarm(5000, 5000);
 		}
-
+    cerr << "CREATE" << endl;
 		tcb new_thread;
 		void* reserved_memory = malloc(32767);
 		long int* thread_memory = (long int*)reserved_memory;
