@@ -122,10 +122,10 @@ int sem_wait(sem_t *sem)
     ((semaphore*)(sem->__align))->list.push_back(&threads[current_thread]);
     threads[current_thread].status = BLOCKED;
     ((semaphore*)(sem->__align))->status = BLOCKED;
-    //while(((semaphore*)(sem->__align))->status == BLOCKED);
-    unlock();
+    switch_threads(SIGALRM);
+    /*unlock();
     kill(getpid(), SIGALRM);
-    lock();
+    lock();*/
   }
   unlock();
   return 0;
@@ -136,8 +136,7 @@ int sem_post(sem_t *sem)
   if (((semaphore*)(sem->__align))->list.size() > 0)
   {
     ((semaphore*)(sem->__align))->list[0]->status = READY;
-    //delete(((semaphore*)(sem->__align))->list[0]);
-    //((semaphore*)(sem->__align))->list.erase(((semaphore*)(sem->__align))->list.begin());
+    ((semaphore*)(sem->__align))->list.erase(((semaphore*)(sem->__align))->list.begin());
   }
   else if (((semaphore*)(sem->__align))->val >= SEM_VALUE_MAX)
   {
@@ -189,6 +188,7 @@ void scheduler()
         current_thread = 0;
     }
     cerr << ":(" << endl;
+    cerr << "current " << current_thread << endl;
     threads[current_thread].status = RUNNING;
   	longjmp(threads[current_thread].buf, 1); //TODO: change status of thread???
 }
