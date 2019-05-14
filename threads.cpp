@@ -176,6 +176,7 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
 	}
   else
   {
+    cerr << "after longjmp to main" << endl;
     pthread_exit(0);
   }
 	return 0;
@@ -214,20 +215,21 @@ int pthread_join(pthread_t thread, void **value_ptr)
   }
 
   lock();
-  cerr << "target: " << target << endl;
   if (target_thread->waiting_thread != NULL)
     return EINVAL;
   threads[current_thread].status = BLOCKED;
   target_thread->waiting_thread = &threads[current_thread];
   if (setjmp(threads[current_thread].buf)!= 0)
   {
-  		*value_ptr = target_thread->return_value;
+      if (value_ptr != NULL)
+  		  *value_ptr = target_thread->return_value;
   }
   else
   {
     unlock();
     scheduler();
   }
+
   unlock();
   return 0;
 }
@@ -242,7 +244,6 @@ void pthread_exit(void *value_ptr)
 	{
     if (threads[0].SP != pointer)
 		  free(threads[0].SP);
-    //threads.erase(threads.begin());
     threads[0].return_value = value_ptr;
     threads[0].status = EXITED;
     threads[0].waiting_thread->status = READY;
@@ -250,26 +251,19 @@ void pthread_exit(void *value_ptr)
 	}
 	else
 	{
-    cerr << "current thread: " << current_thread << endl;
     if (threads[current_thread].SP != pointer)
     {
       free(threads[current_thread].SP);
     }
     threads[current_thread].return_value = value_ptr;
     threads[current_thread].status = EXITED;
-    //cerr << "before changing waiting thread status" << endl;
     if (threads[current_thread].waiting_thread != NULL)
       threads[current_thread].waiting_thread->status = READY;
-    //cerr << "after waiting thread status = ready" << endl;
-		//threads.erase(threads.begin() + current_thread);
 	}
   current_thread++;
 
-  cerr << "exit current: " << current_thread << endl << endl;
-
   if (current_thread == threads.size() && threads.size() > 0)
   {
-    cerr << "EXIT RESET CURRENT TO 0" << endl;
     current_thread = 0;
   }
   while(threads[current_thread].status == BLOCKED || threads[current_thread].status == EXITED)
