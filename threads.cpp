@@ -55,10 +55,14 @@ sigset_t alarm_set;
 long int* pointer = 0;
 
 void lock() {
+  sigemptyset(&alarm_set);
+  sigaddset(&alarm_set, SIGALRM);
 	sigprocmask(SIG_BLOCK, &alarm_set, NULL);
 }
 
 void unlock() {
+  sigemptyset(&alarm_set);
+  sigaddset(&alarm_set, SIGALRM);
 	sigprocmask(SIG_UNBLOCK, &alarm_set, NULL);
 }
 
@@ -231,6 +235,7 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
 
       sigemptyset( &sigact.sa_mask );
       sigemptyset(&alarm_set);
+      sigaddset(&alarm_set, SIGALRM);
 
 			ualarm(5000, 5000);
 		}
