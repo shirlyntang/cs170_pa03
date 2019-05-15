@@ -26,22 +26,12 @@ struct tcb
     void* return_value;
     tcb* waiting_thread = NULL;
 };
-/*
-struct tcb_list_node
-{
-  tcb data;
-  tcb* next;
-};
-
-struct tcb_list
-{
-
-};*/
 
 struct semaphore
 {
   int val;
   int status;
+  bool initialized = false;
   //tcb_list list;
   vector<tcb*> list;
 };
@@ -53,16 +43,21 @@ pthread_t thread_id = 0;
 int current_thread = 0;
 sigset_t alarm_set;
 long int* pointer = 0;
+bool locked = false;
 
 void lock() {
   sigemptyset(&alarm_set);
   sigaddset(&alarm_set, SIGALRM);
 	sigprocmask(SIG_BLOCK, &alarm_set, NULL);
+  locked = true;
 }
 
 void unlock() {
+  if (!locked)
+    return;
   sigemptyset(&alarm_set);
   sigaddset(&alarm_set, SIGALRM);
+  locked = false;
 	sigprocmask(SIG_UNBLOCK, &alarm_set, NULL);
 }
 
@@ -79,6 +74,11 @@ sem_t sem;
 int sem_init(sem_t *sem, int pshared, unsigned int value)
 {
   lock();
+  if (sem == NULL)
+  {
+  	unlock();
+  	return -1;
+  }
   if (pshared != 0)
   {
     unlock();
@@ -93,8 +93,8 @@ int sem_init(sem_t *sem, int pshared, unsigned int value)
   }
   s->val = value;
   s->status = READY;
+  s->initialized = true;
   s->list.resize(0, 0);
-  cerr << ":PPP" << endl;
   sem->__align = (long int)s;
   unlock();
   return 0;
@@ -102,6 +102,11 @@ int sem_init(sem_t *sem, int pshared, unsigned int value)
 int sem_destroy(sem_t *sem)
 {
   lock();
+  if (sem == NULL || ((semaphore*)(sem->__align))->initialized == false)
+  {
+  	unlock();
+  	return -1;
+  }
   if (sem->__align!=0 && ((semaphore*)(sem->__align))->status != BLOCKED)
   {
     delete((semaphore*)(sem->__align));
@@ -113,6 +118,11 @@ int sem_destroy(sem_t *sem)
 int sem_wait(sem_t *sem)
 {
   lock();
+  if (sem == NULL)
+  {
+  	unlock();
+  	return -1;
+  }
   if (((semaphore*)(sem->__align))->val > 0)
   {
     (((semaphore*)(sem->__align))->val)--;
@@ -132,6 +142,11 @@ int sem_wait(sem_t *sem)
 int sem_post(sem_t *sem)
 {
   lock();
+  if (sem == NULL)
+  {
+  	unlock();
+  	return -1;
+  }
   if (((semaphore*)(sem->__align))->val >= SEM_VALUE_MAX)
   {
     unlock();
